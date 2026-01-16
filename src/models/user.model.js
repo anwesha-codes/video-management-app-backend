@@ -1,3 +1,4 @@
+import { json } from "express";
 import mongoose from "mongoose";
 
 const userSchema = new mongoose.Schema({
@@ -7,7 +8,7 @@ const userSchema = new mongoose.Schema({
             ref: "Video"
         }
     ],
-    username: {
+    userName: {
         type: String,
         required: true,
         unique: true,
@@ -22,7 +23,7 @@ const userSchema = new mongoose.Schema({
         lowercase: true,
         trim: true,
     },
-    fullname: {
+    fullName: {
         type: String,
         required: true,
         trim: true,
@@ -45,5 +46,44 @@ const userSchema = new mongoose.Schema({
 
     },
 }, { timestamps: true })
+
+userSchema.pre("save", async function (next) {
+    if (!this.isModified("password")) {
+        return next()
+    }
+    this.password = bcrypt.hash(this.password, 10)
+    next()
+})
+
+userSchema.methods.isPasswordValid = async function (password) {
+    return await bcrypt.compare(password, this.password)
+}
+
+userSchema.methods.generateAccessToken = function () {
+    return json.sign(
+        {
+            _id: this._id,
+            email: this.email,
+            userName: this.userName,
+            fullName: this.fullName
+        },
+        process.env.ACCESS_TOKEN_SECRET,
+        {
+            expiresIn: process.env.ACCESS_TOKEN_EXPIRY
+        }
+    )
+}
+
+userSchema.methods.generateRefreshToken = function () {
+    return json.sign(
+        {
+            _id: this._id,
+        },
+        process.env.REFRESH_TOKEN_SECRET,
+        {
+            expiresIn: process.env.REFRESH_TOKEN_EXPIRY
+        }
+    )
+}
 
 export const User = new mongoose.model("User", userSchema)
