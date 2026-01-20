@@ -1,8 +1,8 @@
 import { response } from "express"
-import { v2 as cloudinary } from cloudinary
+import { v2 as cloudinary } from "cloudinary"
 import fs from "fs"
 
-cloudinary.v2.config({
+cloudinary.config({
     //putting random values for learning but since all these are private confidential details so we will move it to .env file
     // cloud_name : "annyclouds",
     // api_key: "234823748979",
@@ -17,7 +17,7 @@ const uploadOnCloudinary = async (localFilePath) => {
         if (!localFilePath) return null
         //else upload file on cloudinary
         await cloudinary.uploader.upload(localFilePath, {
-            resource_type: auto,
+            resource_type: "auto",
         })
         //file uploaded successfully
         console.log("File is uploaded on cloudinary", response.url)
@@ -28,3 +28,5 @@ const uploadOnCloudinary = async (localFilePath) => {
         return null
     }
 }
+
+export { uploadOnCloudinary }
