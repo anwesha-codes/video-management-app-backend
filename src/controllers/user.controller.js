@@ -17,7 +17,7 @@ const registerUser = asyncHandler(async (req, res) => {
     }
 
     // 3. check if user already exists
-    const existingUser = User.findOne({
+    const existingUser = await User.findOne({
         $or: [{ userName }, { email }]
     })
     if (existingUser) {
@@ -59,4 +59,71 @@ const registerUser = asyncHandler(async (req, res) => {
     )
 })
 
-export { registerUser }
+const loginUser = asyncHandler(async (req, res) => {
+    // 1. get user data
+    const { email, userName, password } = req.body
+
+    // 2. validate empty or filled
+    if (!userName || !password) {
+        throw new apiError(400, "username or email is required")
+    }
+
+    // 3. find user
+    const user = await User.findOne({
+        $or: [{ userName }, { email }]
+    })
+    if (!user) {
+        throw new apiError(404, "User does not exists")
+    }
+
+    // 4. check password
+    const isPasswordValid = await user.isPasswordValid(password)
+    if (!isPasswordValid) {
+        throw new apiError(401, "Invalid user credentials")
+    }
+
+    // 5. generate access token & refresh token
+    // first create a function to generate both tokens
+    const generateAccessAndRefreshToken = async (userId) => {
+        try {
+            const user = await User.findById(userId)
+            const accessToken = user.generateAccessToken()
+            const refreshToken = user.generateRefreshToken()
+            user.refreshToken = refreshToken
+            await user.save({ validateBeforeSave: false })
+            return { accessToken, refreshToken }
+        }
+        catch (error) {
+            throw new apiError(500, "Error generating tokens")
+        }
+    }
+    // now call the function
+    const { accessToken, refreshToken } = await generateAccessAndRefreshToken(user._id)
+
+    // 6.send cookie to user
+    const loggedInUser = await User.findById(user._id).select("-password -refreshToken")
+    const options = {
+        httpOnly: true,
+        secure: true
+    }
+    return res.status(200).cookie("refreshToken", refreshToken, options).cookie("accessToken", accessToken, options).json(
+        new apiResponse(200, { user: loggedInUser, accessToken, refreshToken }, "User logged in successfully")
+    )
+})
+
+const logoutUser = asyncHandler(async (req, res) => {
+    await User.findByIdAndUpdate(req.user._id, {
+        $set: {
+            refreshToken: undefined
+        }
+    }, { new: true })
+})
+const options = {
+    httpOnly: true,
+    secure: true
+}
+return res.status(200).clearCookie("refreshToken", options).clearCookie("accessToken", options).json(
+    new apiResponse(200, null, "User logged out successfully")
+)
+
+export { registerUser, loginUser, logoutUser };

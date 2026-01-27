@@ -1,9 +1,10 @@
 import { Router } from "express";
-import { registerUser } from "../controllers/user.controller.js";
+import { registerUser,  loginUser, logoutUser } from "../controllers/user.controller.js";
 import { upload } from "../middlewares/multer.middleware.js"
+import { verifyJWT } from "../middlewares/auth.middleware.js";
 
 const router = Router()
-router.route("/register").post(upload.fields(
+router.route("/register").post(upload.fields([
     {
         name: "avatar", // remember this name "avatar" has to be exactly same in frontend 
         maxCount: 1
@@ -11,7 +12,14 @@ router.route("/register").post(upload.fields(
     {
         name: "coverImage", // remember this name "coverImage" has to be exactly same when send from frontend
         maxCount: 1
-    }),
+    }
+]),
     registerUser)
+
+
+router.route("/login").post(loginUser)
+
+//secure routes - logout
+router.route("/logout").post(verifyJWT, logoutUser)
 
 export default router 
