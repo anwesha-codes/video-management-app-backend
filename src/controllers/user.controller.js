@@ -247,4 +247,108 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
     )
 })
 
-export { registerUser, loginUser, logoutUser, refreshAccessToken, changeCurrentPassword, getCurrentUser, updateAccountDetails, updateUserAvatar, updateUserCoverImage };
+const getUserChannelProfile = asyncHandler(async (req, res) => {
+    const { username } = req.params
+    if (!username) {
+        throw new apiError(400, "Username is required")
+    }
+    const channel = await User.aggregate([
+        {
+            $match: {
+                username: username.toLowerCase()
+            }
+        },
+        {
+            $lookup: {
+                from: "subscriptions",
+                localFields: "_id",
+                foreignField: "channel",
+                as: "subscribers"
+            }
+        },
+        {
+            $lookup: {
+                from: "subscriptions",
+                localFields: "_id",
+                foreignField: "subscriber",
+                as: "subscribedTo"
+            }
+        },
+        {
+            $addFields: {
+                subscribersCount: { $size: "$subscribers" },
+                subscribedToCount: { $size: "$subscribedTo" },
+                isSubscribed: {
+                    $cond: {
+                        if: { $in: [req.user?._id, "$subscribers.subscriber"] },
+                        then: true,
+                        else: false
+                    }
+                }
+            }
+        },
+        {
+            $project: {
+                password: 0,
+                refreshToken: 0,
+                createdAt: 0,
+                updatedAt: 0
+            }
+        }
+    ])
+    if (!channel?.length) {
+        throw new apiError(404, "Channel not found")
+    }
+    return res
+        .status(200)
+        .json(new apiResponse(200, channel[0], "Channel details fetched successfully"))
+})
+
+const getWatchHistory = asyncHandler(async (req, res) => {
+    const user = await User.aggregate([
+        {
+            $match: {
+                _id: new mongoose.Types.ObjectId(req.user._id) // here we are matching the user based on the _id field in the User collection. We need to convert the req.user._id to a mongoose ObjectId type because in MongoDB, the _id field is stored as an ObjectId. This conversion until now was taken care by "mongoose" silently. But when we are using the aggregation pipeline, we need to explicitly convert the _id to ObjectId type because here our pipeline is sent directly without being intervened by "mongoose".   
+            }
+        },
+        {
+            $lookup: {
+                from: "videos",
+                localField: "watchHistory",
+                foreignField: "_id",
+                as: "watchHistory",
+                pipeline: [ // here we are using pipeline inside lookup to further populate the channel details of each video in the watch history. We do this since "owner" in itself is refering to a "user" object. If we do not use a pipeline we will not get any owner details in the watch history videos.
+                    {
+                        $lookup: {
+                            from: "users",
+                            localField: "owner",
+                            foreignField: "_id",
+                            as: "owner",
+                            pipeline: [
+                                {
+                                    $project: {
+                                        fullname: 1,
+                                        username: 1,
+                                        avatar: 1
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    {
+                        $project: {
+                            $addFields: {
+                                owner: { $first: "$owner" }
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    ])
+    return res
+        .status(200)
+        .json(new apiResponse(200, user[0].watchHistory, "User watch history fetched successfully"))
+})
+
+export { registerUser, loginUser, logoutUser, refreshAccessToken, changeCurrentPassword, getCurrentUser, updateAccountDetails, updateUserAvatar, updateUserCoverImage, getUserChannelProfile, getWatchHistory };
